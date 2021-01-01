@@ -14,3 +14,4 @@ rand = "0.8"
 bevy_networking_turbulence = { git = "https://github.com/smokku/bevy_networking_turbulence.git", features = ["use-webrtc"], default-features = false }
 agarlib = { path = "../library" }
 bevy_prototype_lyon = { git = "https://github.com/Nilirad/bevy_prototype_lyon.git" }
+

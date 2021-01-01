@@ -4,42 +4,91 @@ use bevy_networking_turbulence::{
     NetworkResource, NetworkingPlugin, ReliableChannelSettings,
 };
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, time::Duration};
+use std::{collections::HashMap, net::SocketAddr, time::Duration};
 
 const SERVER_PORT: u16 = 14192;
 
-pub const BOARD_WIDTH: u32 = 1000;
-pub const BOARD_HEIGHT: u32 = 1000;
+pub const AGAR_INIT_RADIUS: f32 = 10.0;
+pub const AGAR_MAX_RADIUS: f32 = 1000.0;
+
+pub fn max_velocity(radius: f32) -> f32 {
+    200.0 / (radius + 1.0 - AGAR_INIT_RADIUS)
+}
+
+pub const WINDOW_WIDTH: f32 = 1000.0;
+pub const WINDOW_HEIGHT: f32 = 1000.0;
+
+pub const WORLD_WIDTH: f32 = 2000.0;
+pub const WORLD_HEIGHT: f32 = 2000.0;
+
+pub fn input_to_velocity(pos: &Vec2, max: f32) -> Vec3 {
+    let w = 0.1;
+    let x = (pos.x - WINDOW_WIDTH / 2.0) * w;
+    let y = (pos.y - WINDOW_HEIGHT / 2.0) * w;
+    let l = (x.powf(2.0) + y.powf(2.0)).sqrt();
+    let w = l.min(max) / l;
+
+    Vec3::new(x, y, 0.0) * w
+}
+
+pub type EntityId = u32;
 
 #[derive(Default)]
 pub struct NetworkBroadcast {
     pub frame: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub enum Direction {
-    Left,
-    Right,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Update {
+    pub agar: Agar,
+    pub translation: Vec3,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GameStateMessage {
     pub frame: u32,
-    pub balls: Vec<(u32, Vec3, Vec3)>,
+    pub agars: HashMap<EntityId, Update>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientMessage {
-    Hello(String),
-    Direction(Direction),
+    Login,
+    LoginAck(EntityId),
+    Input(Vec2),
 }
 
-pub struct Pawn {
-    pub controller: u32,
+#[derive(Debug)]
+pub struct NetworkHandle {
+    pub id: u32,
 }
 
-pub struct Ball {
-    pub velocity: Vec3,
+impl NetworkHandle {
+    pub fn new(id: u32) -> Self {
+        Self { id }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateContext {
+    pub id: EntityId,
+    pub frame: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Agar {
+    pub radius: f32,
+    pub velocity: Vec2,
+    pub max_velocity: f32,
+}
+
+impl Agar {
+    pub fn new() -> Self {
+        Self {
+            radius: AGAR_INIT_RADIUS,
+            velocity: Vec2::zero(),
+            max_velocity: max_velocity(AGAR_INIT_RADIUS),
+        }
+    }
 }
 
 pub struct NetworkPlugin {
