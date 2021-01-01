@@ -1,0 +1,15 @@
+[package]
+name = "agarsrv"
+version = "0.1.0"
+authors = ["YushiOMOTE <yushiomote@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+anyhow = "1.0"
+bevy = { version = "0.4", features = ["bevy_winit", "x11", "render", "bevy_gltf", "png"], default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+bevy_networking_turbulence = { git = "https://github.com/smokku/bevy_networking_turbulence.git", features = ["use-webrtc"], default-features = false }
+agarlib = { path = "../library" }
+tracing-subscriber = "0.2"
