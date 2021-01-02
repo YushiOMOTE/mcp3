@@ -31,6 +31,13 @@ pub fn input_to_velocity(pos: &Vec2, max: f32) -> Vec3 {
     Vec3::new(x, y, 0.0) * w
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum FeedColor {
+    Red,
+    Green,
+    Blue,
+}
+
 pub type EntityId = u32;
 
 #[derive(Default)]
@@ -39,7 +46,20 @@ pub struct NetworkBroadcast {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Update {
+pub struct FeedUpdateSpawn {
+    pub id: EntityId,
+    pub color: FeedColor,
+    pub translation: Vec3,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum FeedUpdate {
+    Spawn(FeedUpdateSpawn),
+    Despawn(EntityId),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AgarUpdate {
     pub agar: Agar,
     pub translation: Vec3,
 }
@@ -47,7 +67,8 @@ pub struct Update {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GameStateMessage {
     pub frame: u32,
-    pub agars: HashMap<EntityId, Update>,
+    pub agars: HashMap<EntityId, AgarUpdate>,
+    pub feeds: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -55,6 +76,8 @@ pub enum ClientMessage {
     Login,
     LoginAck(EntityId),
     Input(Vec2),
+    FeedRequest(u64),
+    FeedResponse(Vec<FeedUpdate>),
 }
 
 #[derive(Debug)]
@@ -72,6 +95,11 @@ impl NetworkHandle {
 pub struct UpdateContext {
     pub id: EntityId,
     pub frame: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Feed {
+    pub color: FeedColor,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,7 +138,7 @@ const CLIENT_STATE_MESSAGE_SETTINGS: MessageChannelSettings = MessageChannelSett
             rtt_update_factor: 0.1,
             rtt_resend_factor: 1.5,
         },
-        max_message_len: 1024,
+        max_message_len: 10240,
     },
     message_buffer_size: 8,
     packet_buffer_size: 8,

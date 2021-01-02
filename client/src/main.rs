@@ -2,7 +2,6 @@ use agarlib::*;
 use bevy::{prelude::*, render::camera::Camera};
 use bevy_networking_turbulence::{NetworkEvent, NetworkResource};
 use bevy_prototype_lyon::prelude::*;
-use rand::Rng;
 use std::collections::HashMap;
 
 fn main() {
@@ -12,6 +11,11 @@ fn main() {
 #[derive(Default)]
 struct PlayerInfo {
     id: Option<EntityId>,
+}
+
+#[derive(Default)]
+struct FeedState {
+    feeds: u64,
 }
 
 struct AgarCli;
@@ -24,10 +28,10 @@ impl Plugin for AgarCli {
             ..Default::default()
         })
         .add_resource(PlayerInfo::default())
+        .add_resource(FeedState::default())
         .add_plugins(bevy_webgl2::DefaultPlugins)
         .add_resource(ClearColor(Color::rgb(0.3, 0.3, 0.3)))
         .add_startup_system(camera_setup.system())
-        .add_startup_system(background_setup.system())
         .add_system_to_stage(stage::PRE_UPDATE, handle_messages.system())
         .add_system(input_system.system())
         .add_system(camera_system.system())
@@ -56,30 +60,6 @@ fn handle_packets(
     }
 }
 
-fn background_setup(
-    commands: &mut Commands,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-) {
-    let material = materials.add(Color::rgb(0.0, 1.0, 0.5).into());
-
-    for _ in 0..1000 {
-        let mut rng = rand::thread_rng();
-        let vel_x = rng.gen_range(-0.5..=0.5);
-        let vel_y = rng.gen_range(-0.5..=0.5);
-        let pos_x = rng.gen_range(0.0..WORLD_WIDTH);
-        let pos_y = rng.gen_range(0.0..WORLD_HEIGHT);
-        info!("Spawning {}x{} {}/{}", pos_x, pos_y, vel_x, vel_y);
-        commands.spawn(primitive(
-            material.clone(),
-            &mut meshes,
-            ShapeType::Circle(5.0),
-            TessellationMode::Fill(&FillOptions::default()),
-            Vec3::new(pos_x, pos_y, -100.0),
-        ));
-    }
-}
-
 fn camera_setup(commands: &mut Commands) {
     commands.spawn(Camera2dBundle::default());
 }
@@ -97,7 +77,6 @@ fn camera_system(
     for (_camera, mut camera_transform) in cameras.iter_mut() {
         for (_agar, context, transform) in agars.iter() {
             if context.id == id && camera_transform.translation != transform.translation {
-                info!("Move camera to {:?}", transform.translation);
                 camera_transform.translation = transform.translation.clone();
                 break;
             }
@@ -122,20 +101,66 @@ fn handle_messages(
     mut player: ResMut<PlayerInfo>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut agars: Query<(Entity, &mut Agar, &mut UpdateContext, &mut Transform)>,
+    feeds: Query<(Entity, &Feed)>,
+    mut feed_state: ResMut<FeedState>,
 ) {
-    for (_, connection) in net.connections.iter_mut() {
+    let mut feed_requests = vec![];
+
+    for (handle, connection) in net.connections.iter_mut() {
         let channels = connection.channels().unwrap();
 
+        let mut feeds_to_despawn = vec![];
+
         while let Some(client_message) = channels.recv::<ClientMessage>() {
-            let id = match client_message {
-                ClientMessage::LoginAck(id) => id,
+            match client_message {
+                ClientMessage::LoginAck(id) => {
+                    player.id = Some(id);
+                }
+                ClientMessage::FeedResponse(updates) => {
+                    info!("Receive updates: {:?}", updates);
+
+                    for update in updates {
+                        match update {
+                            FeedUpdate::Spawn(feed) => {
+                                let color = match feed.color {
+                                    FeedColor::Red => Color::rgb(0.8, 0.2, 0.2),
+                                    FeedColor::Green => Color::rgb(0.2, 0.8, 0.2),
+                                    FeedColor::Blue => Color::rgb(0.2, 0.2, 0.8),
+                                };
+
+                                let material = materials.add(color.into());
+
+                                commands
+                                    .spawn(primitive(
+                                        material.clone(),
+                                        &mut meshes,
+                                        ShapeType::Circle(10.0),
+                                        TessellationMode::Fill(&FillOptions::default()),
+                                        feed.translation.into(),
+                                    ))
+                                    .with(Feed { color: feed.color });
+                            }
+                            FeedUpdate::Despawn(id) => {
+                                feeds_to_despawn.push(id);
+                            }
+                        }
+                    }
+                }
                 _ => continue,
-            };
-            player.id = Some(id);
+            }
+        }
+
+        // Despawn feeds
+        for (entity, _feed) in feeds.iter() {
+            if feeds_to_despawn.contains(&entity.id()) {
+                commands.despawn(entity);
+                break;
+            }
         }
 
         // to avoid double spawn
-        let mut to_spawn = HashMap::new();
+        let mut agars_to_spawn = HashMap::new();
+        let mut feed_request_num = None;
 
         while let Some(mut state_message) = channels.recv::<GameStateMessage>() {
             let message_frame = state_message.frame;
@@ -155,11 +180,23 @@ fn handle_messages(
             }
 
             for (id, update) in state_message.agars.drain() {
-                to_spawn.insert(id, (message_frame, update));
+                agars_to_spawn.insert(id, (message_frame, update));
+            }
+
+            if feed_state.feeds < state_message.feeds {
+                if feed_request_num.is_none() {
+                    feed_request_num = Some(feed_state.feeds);
+                }
+                feed_state.feeds = state_message.feeds;
             }
         }
 
-        for (id, (message_frame, update)) in to_spawn {
+        if let Some(num) = feed_request_num {
+            feed_requests.push((*handle, num));
+        }
+
+        // spawn new agars
+        for (id, (message_frame, update)) in agars_to_spawn {
             let material = materials.add(Color::rgb(0.8, 0.0, 0.0).into());
             commands
                 .spawn(primitive(
@@ -174,6 +211,15 @@ fn handle_messages(
                     id,
                     frame: message_frame,
                 });
+        }
+    }
+
+    for (handle, num) in feed_requests {
+        info!("Requesting feed {}", num);
+        match net.send_message(handle, ClientMessage::FeedRequest(num)) {
+            Ok(Some(msg)) => error!("unable to send feed request to server: {:?}", msg),
+            Err(err) => error!("unable to send feed request to server: {}", err),
+            _ => {}
         }
     }
 }
