@@ -159,15 +159,21 @@ fn network_setup(mut net: ResMut<NetworkResource>) {
     });
 }
 
+pub const ADDR: Option<&'static str> = option_env!("SERVER_ADDR");
+
+pub fn addr() -> &'static str {
+    ADDR.unwrap_or("172.23.76.35")
+}
+
 fn client_setup(mut net: ResMut<NetworkResource>) {
-    let socket_address = SocketAddr::new("172.23.76.35".parse().unwrap(), SERVER_PORT);
+    let socket_address = SocketAddr::new(addr().parse().unwrap(), SERVER_PORT);
     info!("Starting client");
     net.connect(socket_address);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn server_setup(mut net: ResMut<NetworkResource>) {
-    let socket_address = SocketAddr::new("172.23.76.35".parse().unwrap(), SERVER_PORT);
+    let socket_address = SocketAddr::new(addr().parse().unwrap(), SERVER_PORT);
     info!("Starting server: {}", socket_address);
     net.listen(socket_address);
 }
