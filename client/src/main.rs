@@ -2,6 +2,7 @@ use agarlib::*;
 use bevy::{prelude::*, render::camera::Camera};
 use bevy_networking_turbulence::{NetworkEvent, NetworkResource};
 use bevy_prototype_lyon::prelude::*;
+use rand::Rng;
 use std::collections::HashMap;
 
 fn main() {
@@ -26,6 +27,7 @@ impl Plugin for AgarCli {
         .add_plugins(bevy_webgl2::DefaultPlugins)
         .add_resource(ClearColor(Color::rgb(0.3, 0.3, 0.3)))
         .add_startup_system(camera_setup.system())
+        .add_startup_system(background_setup.system())
         .add_system_to_stage(stage::PRE_UPDATE, handle_messages.system())
         .add_system(input_system.system())
         .add_system(camera_system.system())
@@ -35,7 +37,6 @@ impl Plugin for AgarCli {
 }
 
 fn handle_packets(
-    commands: &mut Commands,
     mut net: ResMut<NetworkResource>,
     mut state: ResMut<NetworkReader>,
     network_events: Res<Events<NetworkEvent>>,
@@ -52,6 +53,30 @@ fn handle_packets(
             Err(err) => error!("unable to send login message: {}", err),
             _ => {}
         }
+    }
+}
+
+fn background_setup(
+    commands: &mut Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    let material = materials.add(Color::rgb(0.0, 1.0, 0.5).into());
+
+    for _ in 0..1000 {
+        let mut rng = rand::thread_rng();
+        let vel_x = rng.gen_range(-0.5..=0.5);
+        let vel_y = rng.gen_range(-0.5..=0.5);
+        let pos_x = rng.gen_range(0.0..WORLD_WIDTH);
+        let pos_y = rng.gen_range(0.0..WORLD_HEIGHT);
+        info!("Spawning {}x{} {}/{}", pos_x, pos_y, vel_x, vel_y);
+        commands.spawn(primitive(
+            material.clone(),
+            &mut meshes,
+            ShapeType::Circle(5.0),
+            TessellationMode::Fill(&FillOptions::default()),
+            Vec3::new(pos_x, pos_y, -100.0),
+        ));
     }
 }
 
@@ -98,7 +123,7 @@ fn handle_messages(
     mut meshes: ResMut<Assets<Mesh>>,
     mut agars: Query<(Entity, &mut Agar, &mut UpdateContext, &mut Transform)>,
 ) {
-    for (handle, connection) in net.connections.iter_mut() {
+    for (_, connection) in net.connections.iter_mut() {
         let channels = connection.channels().unwrap();
 
         while let Some(client_message) = channels.recv::<ClientMessage>() {

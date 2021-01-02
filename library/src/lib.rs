@@ -12,7 +12,7 @@ pub const AGAR_INIT_RADIUS: f32 = 10.0;
 pub const AGAR_MAX_RADIUS: f32 = 1000.0;
 
 pub fn max_velocity(radius: f32) -> f32 {
-    200.0 / (radius + 1.0 - AGAR_INIT_RADIUS)
+    1000.0 / (radius + 1.0 - AGAR_INIT_RADIUS)
 }
 
 pub const WINDOW_WIDTH: f32 = 1000.0;
@@ -22,7 +22,7 @@ pub const WORLD_WIDTH: f32 = 2000.0;
 pub const WORLD_HEIGHT: f32 = 2000.0;
 
 pub fn input_to_velocity(pos: &Vec2, max: f32) -> Vec3 {
-    let w = 0.1;
+    let w = 0.5;
     let x = (pos.x - WINDOW_WIDTH / 2.0) * w;
     let y = (pos.y - WINDOW_HEIGHT / 2.0) * w;
     let l = (x.powf(2.0) + y.powf(2.0)).sqrt();
