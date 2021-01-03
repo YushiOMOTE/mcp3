@@ -28,6 +28,7 @@ impl Plugin for AgarSrv {
         .add_startup_system(feed_setup.system())
         .add_resource(NetworkBroadcast { frame: 0 })
         .add_system_to_stage(stage::PRE_UPDATE, handle_messages.system())
+        .add_system(feed_collision_system.system())
         .add_system_to_stage(stage::POST_UPDATE, network_broadcast_system.system())
         .add_plugin(NetworkPlugin { server: true });
     }
@@ -91,6 +92,25 @@ fn network_broadcast_system(
     state.frame += 1;
 
     net.broadcast_message(message);
+}
+
+fn feed_collision_system(
+    commands: &mut Commands,
+    mut feed_updates: ResMut<FeedUpdates>,
+    mut agars: Query<(Entity, &mut Agar, &Transform)>,
+    feeds: Query<(Entity, &Feed, &Transform)>,
+) {
+    for (_entity, mut agar, agar_transform) in agars.iter_mut() {
+        for (entity, _feed, feed_transform) in feeds.iter() {
+            let p = agar_transform.translation;
+            let q = feed_transform.translation;
+            if p.distance(q) < agar.size {
+                feed_updates.updates.push(FeedUpdate::Despawn(entity.id()));
+                commands.despawn(entity);
+                agar.grow(1.0);
+            }
+        }
+    }
 }
 
 fn handle_messages(

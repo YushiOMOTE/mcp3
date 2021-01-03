@@ -100,8 +100,14 @@ fn handle_messages(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut player: ResMut<PlayerInfo>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut agars: Query<(Entity, &mut Agar, &mut UpdateContext, &mut Transform)>,
-    feeds: Query<(Entity, &Feed)>,
+    mut agars: Query<(
+        Entity,
+        &mut Agar,
+        &mut Sprite,
+        &mut UpdateContext,
+        &mut Transform,
+    )>,
+    feeds: Query<(Entity, &Feed, &UpdateContext)>,
     mut feed_state: ResMut<FeedState>,
 ) {
     let mut feed_requests = vec![];
@@ -138,7 +144,11 @@ fn handle_messages(
                                         TessellationMode::Fill(&FillOptions::default()),
                                         feed.translation.into(),
                                     ))
-                                    .with(Feed { color: feed.color });
+                                    .with(Feed { color: feed.color })
+                                    .with(UpdateContext {
+                                        id: feed.id,
+                                        frame: 0,
+                                    });
                             }
                             FeedUpdate::Despawn(id) => {
                                 feeds_to_despawn.push(id);
@@ -151,10 +161,9 @@ fn handle_messages(
         }
 
         // Despawn feeds
-        for (entity, _feed) in feeds.iter() {
-            if feeds_to_despawn.contains(&entity.id()) {
+        for (entity, _feed, context) in feeds.iter() {
+            if feeds_to_despawn.contains(&context.id) {
                 commands.despawn(entity);
-                break;
             }
         }
 
@@ -166,12 +175,15 @@ fn handle_messages(
             let message_frame = state_message.frame;
 
             // update all agars
-            for (entity, mut agar, mut context, mut transform) in agars.iter_mut() {
+            for (entity, mut agar, mut sprite, mut context, mut transform) in agars.iter_mut() {
                 if let Some(update) = state_message.agars.remove(&context.id) {
                     if context.frame >= message_frame {
                         continue;
                     }
                     context.frame = message_frame;
+                    sprite.size.x = update.agar.size * 2.0;
+                    sprite.size.y = update.agar.size * 2.0;
+                    info!("Agar size: {:?}", sprite.size);
                     *agar = update.agar;
                     transform.translation = update.translation;
                 } else {
@@ -202,7 +214,7 @@ fn handle_messages(
                 .spawn(primitive(
                     material.clone(),
                     &mut meshes,
-                    ShapeType::Circle(15.0),
+                    ShapeType::Circle(1.0),
                     TessellationMode::Fill(&FillOptions::default()),
                     update.translation.into(),
                 ))

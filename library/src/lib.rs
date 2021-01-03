@@ -8,11 +8,11 @@ use std::{collections::HashMap, net::SocketAddr, time::Duration};
 
 const SERVER_PORT: u16 = 14192;
 
-pub const AGAR_INIT_RADIUS: f32 = 10.0;
-pub const AGAR_MAX_RADIUS: f32 = 1000.0;
+pub const AGAR_INIT_SIZE: f32 = 15.0;
+pub const AGAR_MAX_SIZE: f32 = 500.0;
 
-pub fn max_velocity(radius: f32) -> f32 {
-    1000.0 / (radius + 1.0 - AGAR_INIT_RADIUS)
+pub fn max_velocity(size: f32) -> f32 {
+    500.0 / ((size - AGAR_INIT_SIZE).powf(0.8) + 1.0) + 50.0
 }
 
 pub const WINDOW_WIDTH: f32 = 1000.0;
@@ -104,7 +104,7 @@ pub struct Feed {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agar {
-    pub radius: f32,
+    pub size: f32,
     pub velocity: Vec2,
     pub max_velocity: f32,
 }
@@ -112,10 +112,15 @@ pub struct Agar {
 impl Agar {
     pub fn new() -> Self {
         Self {
-            radius: AGAR_INIT_RADIUS,
+            size: AGAR_INIT_SIZE,
             velocity: Vec2::zero(),
-            max_velocity: max_velocity(AGAR_INIT_RADIUS),
+            max_velocity: max_velocity(AGAR_INIT_SIZE),
         }
+    }
+
+    pub fn grow(&mut self, size: f32) {
+        self.size += size;
+        self.max_velocity = max_velocity(self.size);
     }
 }
 
