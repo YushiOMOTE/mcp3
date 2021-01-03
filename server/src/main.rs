@@ -11,6 +11,7 @@ fn main() {
 #[derive(Default)]
 struct FeedUpdates {
     updates: Vec<FeedUpdate>,
+    total_feeds: usize,
 }
 
 struct AgarSrv;
@@ -25,17 +26,19 @@ impl Plugin for AgarSrv {
         .add_resource(FeedUpdates::default())
         .add_plugins(MinimalPlugins)
         .add_system(movement_system.system())
-        .add_startup_system(feed_setup.system())
         .add_resource(NetworkBroadcast { frame: 0 })
         .add_system_to_stage(stage::PRE_UPDATE, handle_messages.system())
         .add_system(feed_collision_system.system())
+        .add_system(feed_spawn_system.system())
         .add_system_to_stage(stage::POST_UPDATE, network_broadcast_system.system())
         .add_plugin(NetworkPlugin { server: true });
     }
 }
 
-fn feed_setup(commands: &mut Commands, mut feed_updates: ResMut<FeedUpdates>) {
-    for _ in 0..100 {
+fn feed_spawn_system(commands: &mut Commands, mut feed_updates: ResMut<FeedUpdates>) {
+    while feed_updates.total_feeds < 100 {
+        info!("Spawn feed {}", feed_updates.total_feeds);
+
         let mut rng = rand::thread_rng();
         let pos_x = rng.gen_range(0.0..WORLD_WIDTH);
         let pos_y = rng.gen_range(0.0..WORLD_HEIGHT);
@@ -55,6 +58,8 @@ fn feed_setup(commands: &mut Commands, mut feed_updates: ResMut<FeedUpdates>) {
                 color,
                 translation: transform.translation.clone(),
             }));
+
+        feed_updates.total_feeds += 1;
     }
 }
 
@@ -105,7 +110,9 @@ fn feed_collision_system(
             let p = agar_transform.translation;
             let q = feed_transform.translation;
             if p.distance(q) < agar.size {
+                info!("Despawn feed");
                 feed_updates.updates.push(FeedUpdate::Despawn(entity.id()));
+                feed_updates.total_feeds -= 1;
                 commands.despawn(entity);
                 agar.grow(1.0);
             }
