@@ -2,7 +2,7 @@ use agarlib::*;
 use bevy::{app::ScheduleRunnerSettings, prelude::*};
 use bevy_networking_turbulence::NetworkResource;
 use rand::Rng;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 fn main() {
     App::build().add_plugin(AgarSrv).run();
@@ -11,7 +11,49 @@ fn main() {
 #[derive(Default)]
 struct FeedUpdates {
     updates: Vec<FeedUpdate>,
+    snapshot: HashMap<EntityId, FeedUpdateSpawn>,
     total_feeds: usize,
+}
+
+impl FeedUpdates {
+    fn spawn(&mut self, update: FeedUpdateSpawn) {
+        self.updates.push(FeedUpdate::Spawn(update.clone()));
+        self.snapshot.insert(update.id, update);
+        self.total_feeds += 1;
+    }
+
+    fn despawn(&mut self, id: EntityId) {
+        self.updates.push(FeedUpdate::Despawn(id));
+        self.snapshot.remove(&id);
+        self.total_feeds -= 1;
+    }
+
+    fn snapshot(&self) -> Vec<FeedUpdate> {
+        self.snapshot
+            .iter()
+            .map(|(_, update)| FeedUpdate::Spawn(update.clone()))
+            .collect()
+    }
+
+    fn updates(&self, from: usize) -> Vec<FeedUpdate> {
+        let from = from.min(self.updates.len());
+        let mut updates = HashMap::new();
+
+        for update in &self.updates[from..] {
+            match update {
+                FeedUpdate::Spawn(s) => {
+                    updates.insert(s.id, update.clone());
+                }
+                FeedUpdate::Despawn(id) => {
+                    if updates.remove(id).is_none() {
+                        updates.insert(*id, update.clone());
+                    }
+                }
+            }
+        }
+
+        updates.into_iter().map(|(_, update)| update).collect()
+    }
 }
 
 struct AgarSrv;
@@ -51,15 +93,11 @@ fn feed_spawn_system(commands: &mut Commands, mut feed_updates: ResMut<FeedUpdat
             .current_entity()
             .unwrap();
 
-        feed_updates
-            .updates
-            .push(FeedUpdate::Spawn(FeedUpdateSpawn {
-                id: entity.id(),
-                color,
-                translation: transform.translation.clone(),
-            }));
-
-        feed_updates.total_feeds += 1;
+        feed_updates.spawn(FeedUpdateSpawn {
+            id: entity.id(),
+            color,
+            translation: transform.translation.clone(),
+        });
     }
 }
 
@@ -111,8 +149,7 @@ fn feed_collision_system(
             let q = feed_transform.translation;
             if p.distance(q) < agar.size {
                 info!("Despawn feed");
-                feed_updates.updates.push(FeedUpdate::Despawn(entity.id()));
-                feed_updates.total_feeds -= 1;
+                feed_updates.despawn(entity.id());
                 commands.despawn(entity);
                 agar.grow(1.0);
             }
@@ -165,8 +202,12 @@ fn handle_messages(
                     }
                 }
                 ClientMessage::FeedRequest(update_id) => {
-                    let start_id = (update_id as usize).min(feed_updates.updates.len());
-                    let updates = &feed_updates.updates[start_id..];
+                    let updates = if update_id == 0 {
+                        feed_updates.snapshot()
+                    } else {
+                        feed_updates.updates(update_id as usize)
+                    };
+
                     feeds.push((*handle, updates.to_vec()));
                 }
                 _ => {}
